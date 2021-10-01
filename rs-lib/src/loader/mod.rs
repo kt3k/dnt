@@ -13,6 +13,12 @@ use futures::Future;
 
 use crate::utils::url_to_file_path;
 
+#[cfg(feature = "tokio-loader")]
+mod default_loader;
+
+#[cfg(feature = "tokio-loader")]
+pub use default_loader::*;
+
 pub struct LoadResponse {
   pub maybe_headers: Option<HashMap<String, String>>,
   pub content: String,
@@ -27,41 +33,6 @@ pub trait Loader {
     &self,
     url: ModuleSpecifier,
   ) -> Pin<Box<dyn Future<Output = Result<LoadResponse>> + 'static>>;
-}
-
-#[cfg(feature = "rust")]
-pub struct DefaultLoader {}
-
-#[cfg(feature = "rust")]
-impl DefaultLoader {
-  pub fn new() -> Self {
-    Self {}
-  }
-}
-
-#[cfg(feature = "rust")]
-impl Loader for DefaultLoader {
-  fn read_file(
-    &self,
-    file_path: PathBuf,
-  ) -> Pin<Box<dyn Future<Output = std::io::Result<String>> + 'static>> {
-    Box::pin(tokio::fs::read_to_string(file_path))
-  }
-
-  fn make_request(
-    &self,
-    specifier: ModuleSpecifier,
-  ) -> Pin<Box<dyn Future<Output = Result<LoadResponse>> + 'static>> {
-    Box::pin(async move {
-      let response = reqwest::get(specifier.clone()).await?;
-      let text = response.text().await?;
-
-      Ok(LoadResponse {
-        content: text,
-        maybe_headers: None,
-      })
-    })
-  }
 }
 
 pub struct SourceLoader {
@@ -103,11 +74,16 @@ impl deno_graph::source::Loader for SourceLoader {
       let specifier = specifier.clone();
       return Box::pin(async move {
         let resp = loader.make_request(specifier.clone()).await;
-        (specifier.clone(), resp.map(|r| Some(deno_graph::source::LoadResponse {
-          specifier,
-          content: Arc::new(r.content),
-          maybe_headers: r.maybe_headers,
-        })))
+        (
+          specifier.clone(),
+          resp.map(|r| {
+            Some(deno_graph::source::LoadResponse {
+              specifier,
+              content: Arc::new(r.content),
+              maybe_headers: r.maybe_headers,
+            })
+          }),
+        )
       });
     } else if specifier.scheme() == "file" {
       println!("Loading {}...", specifier);

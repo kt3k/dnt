@@ -12,9 +12,9 @@ use visitors::get_module_specifier_text_changes;
 use visitors::GetDenoGlobalTextChangesParams;
 use visitors::GetModuleSpecifierTextChangesParams;
 
-pub use loader::Loader;
-pub use loader::LoadResponse;
 pub use deno_ast::ModuleSpecifier;
+pub use loader::LoadResponse;
+pub use loader::Loader;
 
 mod loader;
 mod mappings;
@@ -25,6 +25,7 @@ mod visitors;
 
 #[cfg_attr(feature = "serialization", derive(serde::Serialize))]
 #[cfg_attr(feature = "serialization", serde(rename_all = "camelCase"))]
+#[derive(Debug, PartialEq)]
 pub struct OutputFile {
   pub file_path: PathBuf,
   pub file_text: String,
@@ -33,20 +34,21 @@ pub struct OutputFile {
 pub struct TransformOptions {
   pub entry_point: ModuleSpecifier,
   pub keep_extensions: bool,
+  pub shim_package_name: Option<String>,
   pub loader: Option<Box<dyn Loader>>,
 }
 
 pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
-  let mut loader = loader::SourceLoader::new(
-    options
-      .loader
-      .unwrap_or_else(|| {
-        #[cfg(feature = "rust")]
-        return Box::new(loader::DefaultLoader::new());
-        #[cfg(not(feature = "rust"))]
-        panic!("You must provide a loader or use the 'rust' feature.")
-      }),
-  );
+  let shim_package_name = options
+    .shim_package_name
+    .unwrap_or_else(|| "shim-package-name".to_string());
+  let mut loader =
+    loader::SourceLoader::new(options.loader.unwrap_or_else(|| {
+      #[cfg(feature = "tokio-loader")]
+      return Box::new(loader::DefaultLoader::new());
+      #[cfg(not(feature = "tokio-loader"))]
+      panic!("You must provide a loader or use the 'tokio-loader' feature.")
+    }));
   let source_parser = parser::CapturingSourceParser::new();
   let module_graph = create_graph(
     options.entry_point.clone(),
@@ -61,10 +63,10 @@ pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
   let remote_specifiers = loader.remote_specifiers();
 
   let mappings =
-    Mappings::new(&module_graph, &local_specifiers, &remote_specifiers);
+    Mappings::new(&module_graph, &local_specifiers, &remote_specifiers)?;
 
   if local_specifiers.is_empty() {
-    panic!("Did not find any local files.");
+    anyhow::bail!("Did not find any local files.");
   }
 
   // todo: parallelize
@@ -73,7 +75,7 @@ pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
     .into_iter()
     .chain(remote_specifiers.into_iter())
   {
-    let parsed_source = source_parser.get_parsed_source(&specifier).unwrap();
+    let parsed_source = source_parser.get_parsed_source(&specifier)?;
 
     let keep_extensions = options.keep_extensions;
     let text_changes = parsed_source.with_view(|program| {
@@ -90,6 +92,7 @@ pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
         &GetDenoGlobalTextChangesParams {
           program: &program,
           top_level_context: parsed_source.top_level_context(),
+          shim_package_name: shim_package_name.as_str(),
         },
       ));
       text_changes

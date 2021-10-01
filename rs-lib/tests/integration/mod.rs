@@ -9,6 +9,11 @@ macro_rules! assert_files {
     {
       let mut actual = $actual;
       let expected = $expected;
+      #[cfg(target_os = "windows")]
+      for file in actual.iter_mut() {
+        // normalize this on windows to forward slashes
+        file.file_path = PathBuf::from(file.file_path.to_string_lossy().to_string().replace("\\", "/"));
+      }
       actual.sort_by(|a, b| a.file_path.cmp(&b.file_path));
       let mut expected = expected.iter().map(|(file_path, file_text)| d2n::OutputFile {
         file_path: PathBuf::from(file_path),
@@ -16,7 +21,7 @@ macro_rules! assert_files {
       }).collect::<Vec<_>>();
       expected.sort_by(|a, b| a.file_path.cmp(&b.file_path));
 
-      assert_eq!(actual, expected);
+      pretty_assertions::assert_eq!(actual, expected);
     }
   }
 }

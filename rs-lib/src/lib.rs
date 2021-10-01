@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use deno_graph::create_graph;
+#[macro_use]
+extern crate lazy_static;
 
 use mappings::Mappings;
 use text_changes::apply_text_changes;
@@ -72,16 +74,16 @@ pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
   // todo: parallelize
   let mut result = Vec::new();
   for specifier in local_specifiers
-    .into_iter()
-    .chain(remote_specifiers.into_iter())
+    .iter()
+    .chain(remote_specifiers.iter())
   {
-    let parsed_source = source_parser.get_parsed_source(&specifier)?;
+    let parsed_source = source_parser.get_parsed_source(specifier)?;
 
     let keep_extensions = options.keep_extensions;
     let text_changes = parsed_source.with_view(|program| {
       let mut text_changes = get_module_specifier_text_changes(
         &GetModuleSpecifierTextChangesParams {
-          specifier: &specifier,
+          specifier,
           module_graph: &module_graph,
           mappings: &mappings,
           use_js_extension: keep_extensions,
@@ -104,7 +106,7 @@ pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
     );
 
     result.push(OutputFile {
-      file_path: mappings.get_file_path(&specifier).to_owned(),
+      file_path: mappings.get_file_path(specifier).to_owned(),
       file_text: final_file_text,
     });
   }

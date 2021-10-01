@@ -140,13 +140,29 @@ async fn transform_remote_files() {
         "import * as other from 'http://localhost/mod.ts';"
       )
       .add_remote_file("http://localhost/mod.ts", "import * as myOther from './other.ts';")
-      .add_remote_file("http://localhost/other.ts", "5");
+      .add_remote_file("http://localhost/other.ts", "import * as folder from './folder';")
+      .add_remote_file("http://localhost/folder", "import * as folder2 from './folder.ts';")
+      .add_remote_file("http://localhost/folder.ts", "import * as folder3 from './folder.js';")
+      .add_remote_file("http://localhost/folder.js", "import * as otherFolder from './otherFolder';")
+      .add_remote_file("http://localhost/otherFolder", "import * as subFolder from './sub/subfolder';")
+      .add_remote_file("http://localhost/sub/subfolder", "import * as localhost2 from 'http://localhost2';")
+      .add_remote_file("http://localhost2", "import * as localhost3Mod from 'https://localhost3/mod.ts';")
+      .add_remote_file("https://localhost3/mod.ts", "import * as localhost3 from 'https://localhost3';")
+      .add_remote_file("https://localhost3", "5;");
     })
     .transform().await.unwrap();
 
   assert_files!(result, &[
-    ("mod.ts", "import * as other from './deps/0';"),
-    ("deps/0.ts", "import * as myOther from './0/other';"),
-    ("deps/0/other.ts", "5")
+    ("mod.ts", "import * as other from './deps/0/mod';"),
+    ("deps/0/mod.ts", "import * as myOther from './other';"),
+    ("deps/0/other.ts", "import * as folder from './folder';"),
+    ("deps/0/folder.js", "import * as folder2 from './folder_2';"),
+    ("deps/0/folder_2.ts", "import * as folder3 from './folder_3';"),
+    ("deps/0/folder_3.js", "import * as otherFolder from './otherFolder';"),
+    ("deps/0/otherFolder.js", "import * as subFolder from './sub/subfolder';"),
+    ("deps/0/sub/subfolder.js", "import * as localhost2 from '../../1';"),
+    ("deps/1.js", "import * as localhost3Mod from './2/mod';"),
+    ("deps/2/mod.ts", "import * as localhost3 from '../2';"),
+    ("deps/2.js", "5;"),
   ]);
 }

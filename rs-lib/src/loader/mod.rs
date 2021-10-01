@@ -37,25 +37,25 @@ pub trait Loader {
 
 pub struct SourceLoader {
   loader: Arc<Box<dyn Loader>>,
-  local_specifiers: HashSet<ModuleSpecifier>,
-  remote_specifiers: HashSet<ModuleSpecifier>,
+  local_specifiers: Vec<ModuleSpecifier>,
+  remote_specifiers: Vec<ModuleSpecifier>,
 }
 
 impl SourceLoader {
   pub fn new(loader: Box<dyn Loader>) -> Self {
     Self {
       loader: Arc::new(loader),
-      local_specifiers: HashSet::new(),
-      remote_specifiers: HashSet::new(),
+      local_specifiers: Vec::new(),
+      remote_specifiers: Vec::new(),
     }
   }
 
-  pub fn local_specifiers(&self) -> Vec<ModuleSpecifier> {
-    to_sorted(&self.local_specifiers)
+  pub fn local_specifiers(&self) -> &Vec<ModuleSpecifier> {
+    &self.local_specifiers
   }
 
-  pub fn remote_specifiers(&self) -> Vec<ModuleSpecifier> {
-    to_sorted(&self.remote_specifiers)
+  pub fn remote_specifiers(&self) -> &Vec<ModuleSpecifier> {
+    &self.remote_specifiers
   }
 }
 
@@ -68,7 +68,7 @@ impl deno_graph::source::Loader for SourceLoader {
   ) -> deno_graph::source::LoadFuture {
     if specifier.scheme() == "https" || specifier.scheme() == "http" {
       println!("Downloading {}...", specifier);
-      self.remote_specifiers.insert(specifier.clone());
+      self.remote_specifiers.push(specifier.clone());
 
       let loader = self.loader.clone();
       let specifier = specifier.clone();
@@ -87,7 +87,7 @@ impl deno_graph::source::Loader for SourceLoader {
       });
     } else if specifier.scheme() == "file" {
       println!("Loading {}...", specifier);
-      self.local_specifiers.insert(specifier.clone());
+      self.local_specifiers.push(specifier.clone());
 
       let file_path = url_to_file_path(specifier).unwrap();
       let loader = self.loader.clone();
@@ -113,10 +113,4 @@ impl deno_graph::source::Loader for SourceLoader {
       )))
     }
   }
-}
-
-fn to_sorted(values: &HashSet<ModuleSpecifier>) -> Vec<ModuleSpecifier> {
-  let mut values = values.iter().map(ToOwned::to_owned).collect::<Vec<_>>();
-  values.sort();
-  values
 }

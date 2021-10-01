@@ -84,11 +84,7 @@ impl Mappings {
       let base_dir = PathBuf::from(format!("deps/{}/", i.to_string()));
       for (specifier, media_type) in specifiers {
         let relative = make_url_relative(&root, &specifier)?;
-        println!("---------");
-        println!("{}", root);
-        println!("{}", relative);
         let mut filepath_no_ext = base_dir.join(relative).with_extension("");
-        println!("{}", filepath_no_ext.display());
         let original_file_name = filepath_no_ext.file_name().unwrap().to_string_lossy().to_string();
         let mut count = 2;
         while !mapped_filepaths_no_ext.insert(filepath_no_ext.clone()) {

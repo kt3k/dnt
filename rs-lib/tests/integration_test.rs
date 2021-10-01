@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use pretty_assertions::assert_eq;
+
 #[macro_use]
 mod integration;
 
@@ -165,4 +167,31 @@ async fn transform_remote_files() {
     ("deps/2/mod.ts", "import * as localhost3 from '../2';"),
     ("deps/2.js", "5;"),
   ]);
+}
+
+#[tokio::test]
+async fn transform_local_file_not_exists() {
+  let err_message = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_local_file("/mod.ts",
+        "import * as other from './other.ts';"
+      );
+    })
+    .transform().await.err().unwrap();
+
+  assert_eq!(err_message.to_string(), "An error was returned from the loader: entity not found (file:///other.ts)");
+}
+
+#[tokio::test]
+async fn transform_remote_file_not_exists() {
+  let err_message = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_remote_file("http://localhost/mod.ts",
+        "import * as other from './other.ts';"
+      );
+    })
+    .entry_point("http://localhost/mod.ts")
+    .transform().await.err().unwrap();
+
+  assert_eq!(err_message.to_string(), "An error was returned from the loader: Not found. (http://localhost/other.ts)");
 }

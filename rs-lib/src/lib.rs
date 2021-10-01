@@ -64,6 +64,13 @@ pub async fn transform(options: TransformOptions) -> Result<Vec<OutputFile>> {
   let local_specifiers = loader.local_specifiers();
   let remote_specifiers = loader.remote_specifiers();
 
+  // raise any module graph errors
+  for specifier in local_specifiers.iter().chain(remote_specifiers.iter()) {
+    module_graph.try_get(specifier).map_err(|err| {
+      anyhow::anyhow!("{} ({})", err.to_string(), specifier)
+    })?;
+  }
+
   let mappings =
     Mappings::new(&module_graph, &local_specifiers, &remote_specifiers)?;
 

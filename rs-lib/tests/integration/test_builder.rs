@@ -34,6 +34,11 @@ impl TestBuilder {
     self
   }
 
+  pub fn entry_point(&mut self, value: impl AsRef<str>) -> &mut Self {
+    self.entry_point = value.as_ref().to_string();
+    self
+  }
+
   pub fn shim_package_name(&mut self, name: impl AsRef<str>) -> &mut Self {
     self.shim_package_name = Some(name.as_ref().to_string());
     self

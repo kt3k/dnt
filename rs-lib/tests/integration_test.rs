@@ -150,7 +150,7 @@ async fn transform_remote_files() {
       .add_remote_file("http://localhost/sub/subfolder", "import * as localhost2 from 'http://localhost2';")
       .add_remote_file("http://localhost2", "import * as localhost3Mod from 'https://localhost3/mod.ts';")
       .add_remote_file("https://localhost3/mod.ts", "import * as localhost3 from 'https://localhost3';")
-      .add_remote_file("https://localhost3", "5;");
+      .add_remote_file_with_headers("https://localhost3", "5;", &[("content-type", "application/typescript; charset=UTF-8")]);
     })
     .transform().await.unwrap();
 
@@ -165,7 +165,7 @@ async fn transform_remote_files() {
     ("deps/0/sub/subfolder.js", "import * as localhost2 from '../../1';"),
     ("deps/1.js", "import * as localhost3Mod from './2/mod';"),
     ("deps/2/mod.ts", "import * as localhost3 from '../2';"),
-    ("deps/2.js", "5;"),
+    ("deps/2.ts", "5;"),
   ]);
 }
 
@@ -194,4 +194,88 @@ async fn transform_remote_file_not_exists() {
     .transform().await.err().unwrap();
 
   assert_eq!(err_message.to_string(), "An error was returned from the loader: Not found. (http://localhost/other.ts)");
+}
+
+
+#[tokio::test]
+async fn transform_parse_error() {
+  let err_message = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_local_file("/mod.ts", "export * from 'http://localhost/mod.js';")
+      .add_remote_file_with_headers("http://localhost/mod.js", "", &[("x-typescript-types", "./declarations.d.ts")])
+      .add_remote_file("http://localhost/declarations.d.ts", "test test test");
+    })
+    .transform().await.err().unwrap();
+
+  assert_eq!(err_message.to_string(), "The module's source code would not be parsed: Expected ';', '}' or <eof> at http://localhost/declarations.d.ts:1:6 (http://localhost/declarations.d.ts)");
+}
+
+#[tokio::test]
+async fn transform_typescript_types_resolution_error() {
+  let err_message = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_local_file("/mod.ts", "export * from 'https://localhost/mod.js';")
+      .add_remote_file_with_headers("https://localhost/mod.js", "", &[("x-typescript-types", "http://localhost/declarations.d.ts")])
+      .add_remote_file("http://localhost/declarations.d.ts", "");
+    })
+    .transform().await.err().unwrap();
+
+  assert_eq!(err_message.to_string(), "Error resolving types for https://localhost/mod.js with reference http://localhost/declarations.d.ts. Modules imported via https are not allowed to import http modules.");
+}
+
+#[tokio::test]
+async fn transform_typescript_types_in_headers() {
+  let result = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_local_file("/mod.ts", "export * from 'http://localhost/mod.js';")
+      .add_remote_file_with_headers("http://localhost/mod.js", "function test() { return 5; }", &[("x-typescript-types", "./declarations.d.ts")])
+      .add_remote_file("http://localhost/declarations.d.ts", "declare function test(): number;");
+    })
+    .transform().await.unwrap();
+
+  assert_files!(result, &[
+    ("mod.ts", "export * from './deps/0/mod';"),
+    ("deps/0/mod.js", "function test() { return 5; }"),
+    ("deps/0/mod.d.ts", "declare function test(): number;"),
+  ]);
+}
+
+// todo:
+// * tests for multiple deno-types for the same module pointing at different .d.ts files (error)
+// * Handle deno-types when it references a `.ts` file (maybe transform the .ts file to .js?)
+
+#[tokio::test]
+async fn transform_typescript_types_in_deno_types() {
+  let result = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_local_file("/mod.ts", "// @deno-types='./declarations.d.ts';\nexport * from 'http://localhost/mod.js';")
+      .add_remote_file("http://localhost/mod.js", "function test() { return 5; }")
+      .add_local_file("/declarations.d.ts", "declare function test(): number;");
+    })
+    .transform().await.unwrap();
+
+  assert_files!(result, &[
+    // todo: remove this deno-types comment
+    ("mod.ts", "// @deno-types='./declarations.d.ts';\nexport * from './deps/0/mod';"),
+    ("deps/0/mod.js", "function test() { return 5; }"),
+    ("deps/0/mod.d.ts", "declare function test(): number;"),
+  ]);
+}
+
+#[tokio::test]
+async fn transform_typescript_type_references() {
+  let result = TestBuilder::new()
+    .with_loader(|loader| {
+      loader.add_local_file("/mod.ts", "export * from 'http://localhost/mod.js';")
+      .add_remote_file("http://localhost/mod.js", "/// <reference types='./declarations.d.ts' />\nfunction test() { return 5; }")
+      .add_remote_file("http://localhost/declarations.d.ts", "declare function test(): number;");
+    })
+    .transform().await.unwrap();
+
+  assert_files!(result, &[
+    ("mod.ts", "export * from './deps/0/mod';"),
+    // todo: remove this type reference directive comment
+    ("deps/0/mod.js", "/// <reference types='./declarations.d.ts' />\nfunction test() { return 5; }"),
+    ("deps/0/mod.d.ts", "declare function test(): number;"),
+  ]);
 }

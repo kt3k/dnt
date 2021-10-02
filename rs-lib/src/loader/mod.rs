@@ -34,27 +34,29 @@ pub trait Loader {
   ) -> Pin<Box<dyn Future<Output = Result<LoadResponse>> + 'static>>;
 }
 
+pub struct LoaderSpecifiers {
+  pub local: Vec<ModuleSpecifier>,
+  pub remote: Vec<ModuleSpecifier>,
+}
+
 pub struct SourceLoader {
   loader: Arc<Box<dyn Loader>>,
-  local_specifiers: Vec<ModuleSpecifier>,
-  remote_specifiers: Vec<ModuleSpecifier>,
+  specifiers: LoaderSpecifiers,
 }
 
 impl SourceLoader {
   pub fn new(loader: Box<dyn Loader>) -> Self {
     Self {
       loader: Arc::new(loader),
-      local_specifiers: Vec::new(),
-      remote_specifiers: Vec::new(),
+      specifiers: LoaderSpecifiers {
+        local: Vec::new(),
+        remote: Vec::new(),
+      },
     }
   }
 
-  pub fn local_specifiers(&self) -> &Vec<ModuleSpecifier> {
-    &self.local_specifiers
-  }
-
-  pub fn remote_specifiers(&self) -> &Vec<ModuleSpecifier> {
-    &self.remote_specifiers
+  pub fn into_specifiers(self) -> LoaderSpecifiers {
+    self.specifiers
   }
 }
 
@@ -67,7 +69,7 @@ impl deno_graph::source::Loader for SourceLoader {
   ) -> deno_graph::source::LoadFuture {
     if specifier.scheme() == "https" || specifier.scheme() == "http" {
       println!("Downloading {}...", specifier);
-      self.remote_specifiers.push(specifier.clone());
+      self.specifiers.remote.push(specifier.clone());
 
       let loader = self.loader.clone();
       let specifier = specifier.clone();
@@ -86,7 +88,7 @@ impl deno_graph::source::Loader for SourceLoader {
       });
     } else if specifier.scheme() == "file" {
       println!("Loading {}...", specifier);
-      self.local_specifiers.push(specifier.clone());
+      self.specifiers.local.push(specifier.clone());
 
       let file_path = url_to_file_path(specifier).unwrap();
       let loader = self.loader.clone();

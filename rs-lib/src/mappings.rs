@@ -1,5 +1,6 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -16,6 +17,12 @@ lazy_static! {
   static ref HAS_EXTENSION_RE: Regex = Regex::new(r"\.[A-Za-z0-9]*$").unwrap();
 }
 
+pub struct Specifiers {
+  pub local: Vec<ModuleSpecifier>,
+  pub remote: Vec<ModuleSpecifier>,
+  pub types: BTreeMap<ModuleSpecifier, ModuleSpecifier>,
+}
+
 pub struct Mappings {
   inner: HashMap<ModuleSpecifier, PathBuf>,
 }
@@ -23,12 +30,11 @@ pub struct Mappings {
 impl Mappings {
   pub fn new(
     module_graph: &ModuleGraph,
-    local_specifiers: &[ModuleSpecifier],
-    remote_specifiers: &[ModuleSpecifier],
+    specifiers: &Specifiers,
   ) -> Result<Self> {
     let mut mappings = HashMap::new();
-    let base_dir = get_base_dir(local_specifiers)?;
-    for specifier in local_specifiers.iter() {
+    let base_dir = get_base_dir(&specifiers.local)?;
+    for specifier in specifiers.local.iter() {
       let file_path = url_to_file_path(specifier)?;
       let relative_file_path = file_path.strip_prefix(&base_dir)?;
       mappings.insert(specifier.clone(), relative_file_path.to_path_buf());
@@ -38,7 +44,7 @@ impl Mappings {
       ModuleSpecifier,
       Vec<(ModuleSpecifier, MediaType)>,
     )> = Vec::new();
-    for remote_specifier in remote_specifiers.iter() {
+    for remote_specifier in specifiers.remote.iter() {
       let media_type = module_graph
           .get(&remote_specifier)
           .ok_or_else(|| {
@@ -93,6 +99,14 @@ impl Mappings {
         }
         let file_path = filepath_no_ext.with_extension(&media_type.as_ts_extension()[1..]);
         mappings.insert(specifier, file_path);
+      }
+    }
+
+    for (from, to) in specifiers.types.iter() {
+      let file_path = mappings.get(&from).unwrap_or_else(|| panic!("Already had from {} in map when mapping to {}.", from, to));
+      let new_file_path = file_path.with_extension("d.ts");
+      if let Some(past_path) = mappings.insert(to.clone(), new_file_path) {
+        panic!("Already had path {} in map when mapping from {} to {}", past_path.display(), from, to);
       }
     }
 

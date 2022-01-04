@@ -188,7 +188,7 @@ export async function build(options: BuildOptions): Promise<void> {
       declaration: options.declaration,
       esModuleInterop: false,
       isolatedModules: true,
-      useDefineForClassFields: true,
+      // useDefineForClassFields: true,
       experimentalDecorators: true,
       jsx: ts.JsxEmit.React,
       jsxFactory: "React.createElement",
